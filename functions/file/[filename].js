@@ -1,22 +1,33 @@
-/**
- * GET /file/{filename}
- */
-
 async function handleRequest(context) {
     const { request, env, params } = context;
-    const apikey = env.ModerateContentApiKey
-    const ModerateContentUrl = apikey ? `https://api.moderatecontent.com/moderate/?key=${apikey}&` : ""
+    const apikey = env.ModerateContentApiKey;
+    const ModerateContentUrl = apikey ? `https://api.moderatecontent.com/moderate/?key=${apikey}&` : null;
     const ratingApi = env.RATINGAPI ? `${env.RATINGAPI}?` : ModerateContentUrl;
-    const clientIP = request.headers.get("x-forwarded-for") || request.headers.get("clientIP")
-    const Referer = request.headers.get('Referer') || "Referer"
+
+    if (!ratingApi) {
+        return new Response("Missing rating API configuration", { status: 500 });
+    }
+
+    const clientIP = request.headers.get("x-forwarded-for") || request.headers.get("clientIP");
+    const Referer = request.headers.get('Referer') || "Referer";
     const url = new URL(request.url);
 
-    const res_img = await fetch('https://telegra.ph/' + url.pathname + url.search, {
-        method: request.method,
-        headers: request.headers,
-        body: request.body,
-    });
-
+    const fetchImage = async (url) => {
+        try {
+            const res = await fetch(url, {
+                method: 'GET',
+                headers: request.headers,
+                body: request.body,
+            });
+            if (!res.ok) {
+                throw new Error(`Failed to fetch image, status: ${res.status}`);
+            }
+            return res;
+        } catch (error) {
+            console.error("Error fetching image:", error);
+            return new Response("Failed to fetch image", { status: 500 });
+        }
+    };
 
     const options = {
         timeZone: 'Asia/Shanghai',
@@ -28,12 +39,18 @@ async function handleRequest(context) {
         minute: '2-digit',
         second: '2-digit'
     };
-    const timedata = new Date()
-    const formatter = new Intl.DateTimeFormat('zh-CN', options);
-    const formattedDate = formatter.format(timedata);
 
+    const formatter = new Intl.DateTimeFormat('zh-CN', options);
+
+    const getFormattedDate = () => formatter.format(new Date());
+    const formattedDate = getFormattedDate();
+
+    const isBlocked = (rating) => rating === 3;
+    const handleRating = (rating) => isBlocked(rating) ? Response.redirect(BLOCKED_IMAGE_URL, 302) : null;
 
     try {
+        const res_img = await fetchImage('https://telegra.ph/' + url.pathname + url.search);
+
         if (Referer == url.origin + "/admin" || Referer == url.origin + "/list") {
             return res_img;
         } else if (!env.IMG) {
@@ -43,53 +60,39 @@ async function handleRequest(context) {
             const rating = await getRating(env.IMG, url.pathname);
 
             if (rating) {
-                if (rating.rating == 3) {
-                    return Response.redirect("https://img.131213.xyz/asset/image/blocked.png", 302);
-                } else {
-                    return res_img;
-                }
+                const redirectResponse = handleRating(rating.rating);
+                if (redirectResponse) return redirectResponse;
+            } else if (ratingApi) {
+                const rating = await getModerateContentRating(ratingApi, url.pathname);
+                await Promise.all([
+                    insertTgImgLog(env.IMG, url.pathname, Referer, clientIP, formattedDate),
+                    insertImgInfo(env.IMG, url.pathname, Referer, clientIP, rating.rating, 1, formattedDate),
+                ]);
+                const redirectResponse = handleRating(rating.rating);
+                if (redirectResponse) return redirectResponse;
             } else {
-                if (ratingApi) {
-                    const rating = await getModerateContentRating(ratingApi, url.pathname);
-                    await insertImgInfo(env.IMG, url.pathname, Referer, clientIP, rating.rating, 1, formattedDate);
-                    if (rating.rating == 3) {
-                        return Response.redirect("https://img.131213.xyz/asset/image/blocked.png", 302);
-                    } else {
-                        return res_img;
-                    }
-
-                } else {
-                    await insertImgInfo(env.IMG, url.pathname, Referer, clientIP, 0, 1, formattedDate);
-                    return res_img;
-                }
+                await insertImgInfo(env.IMG, url.pathname, Referer, clientIP, 0, 1, formattedDate);
+                return res_img;
             }
         }
     } catch (error) {
+        console.error("Error handling request:", {
+            message: error.message,
+            stack: error.stack,
+            url: request.url,
+            referer: Referer,
+            clientIP,
+        });
         await insertTgImgLog(env.IMG, url.pathname, Referer, clientIP, formattedDate);
-        console.log(error);
-        return res_img;
-
-    }
-
-
-}
-
-
-
-
-
-
-export async function onRequestGet(context) {
-    try {
-        // console.log("dddd");
-        return await handleRequest(context);
-    } catch (error) {
-        // 处理异常
-        console.error(error);
         return new Response("Internal Server Error", { status: 500 });
     }
 }
 
-
-
-
+export async function onRequestGet(context) {
+    try {
+        return await handleRequest(context);
+    } catch (error) {
+        console.error(error);
+        return new Response("Internal Server Error", { status: 500 });
+    }
+}
