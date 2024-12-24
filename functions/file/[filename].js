@@ -95,20 +95,6 @@ async function insertImgInfo(DB, url, referer, ip, rating, total, time) {
     ).bind(url, referer, ip, rating, total, time).run();
 }
 
-// 从数据库获取鉴黄信息
-async function getRating(DB, url) {
-    const ps = DB.prepare(`SELECT rating FROM imginfo WHERE url='${url}'`);
-    const result = await ps.first();
-    return result;
-}
-
-// 调用 ModerateContent API 鉴黄
-async function getModerateContentRating(ratingApi, url) {
-    // console.log("d");
-    const res = await fetch(`${ratingApi}url=https://telegra.ph${url}`);
-    const rating = await res.json();
-    return rating;
-}
 
 
 
