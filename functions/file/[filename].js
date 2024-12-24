@@ -75,26 +75,6 @@ async function handleRequest(context) {
 }
 
 
-// 检查 Referer 是否记录或鉴黄
-function isAllowed(referer, origin) {
-    return referer == `${origin}/admin` || referer == `${origin}/list`;
-}
-
-// 插入 tgimglog 记录
-async function insertTgImgLog(DB, url, referer, ip, time) {
-    const iImglog = await DB.prepare('INSERT INTO tgimglog (url, referer, ip, time) VALUES (?, ?, ?, ?)')
-        .bind(url, referer, ip, time)
-        .run();
-}
-// 插入 imginfo 记录
-async function insertImgInfo(DB, url, referer, ip, rating, total, time) {
-    // console.log(DB, url, referer, ip, rating, total, time);
-    const iImginfo = await DB.prepare(
-        `INSERT INTO imginfo (url, referer, ip, rating, total, time)
-      VALUES (?, ?, ?, ?, ?, ?)`
-    ).bind(url, referer, ip, rating, total, time).run();
-}
-
 
 
 
