@@ -2,7 +2,6 @@
 
 2. 执行sql命令创建表（在控制台输入框粘贴下面语句执行即可）
    
-```sql
 DROP TABLE IF EXISTS tgimglog;
 CREATE TABLE IF NOT EXISTS tgimglog (
 	`id` integer PRIMARY KEY NOT NULL,
