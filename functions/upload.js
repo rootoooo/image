@@ -3,16 +3,39 @@ export async function onRequestPost(context) {
     const url = new URL(request.url);
 
     try {
+        // 确保请求是 multipart/form-data 格式
+        const contentType = request.headers.get('content-type') || '';
+        if (!contentType.includes('multipart/form-data')) {
+            return new Response('Invalid content-type. Expected multipart/form-data.', { status: 400 });
+        }
+
+        // 解析请求体中的文件
+        const formData = await request.formData();
+        const file = formData.get('file'); // 确保字段名称为 'file'
+
+        if (!file) {
+            return new Response('No files passed in the request.', { status: 400 });
+        }
+
+        // 文件检查
+        if (file.size === 0) {
+            return new Response('Uploaded file is empty.', { status: 400 });
+        }
+
+        // 打印文件信息（调试用）
+        console.log('Uploaded file:', file.name, file.type, file.size);
+
         // 拼接目标 URL
         const targetUrl = 'https://telegra.ph/' + url.pathname + url.search;
         console.log('Fetching URL:', targetUrl);
 
-        // 发起请求
+        // 将文件上传到目标服务器
         const res_img = await fetch(targetUrl, {
-            method: 'GET', // 明确使用 GET 请求
+            method: 'POST',
             headers: {
-                'Accept': 'application/json', // 根据 API 要求设置头部
+                'Content-Type': file.type, // 使用文件的实际 Content-Type
             },
+            body: file.stream(), // 直接传递文件流
         });
 
         // 检查响应状态
@@ -21,14 +44,7 @@ export async function onRequestPost(context) {
             return new Response(`Image fetch failed with status ${res_img.status}`, { status: res_img.status });
         }
 
-        // 检查返回的 Content-Type
-        const contentType = res_img.headers.get("content-type");
-        if (!contentType || !contentType.includes("application/json")) {
-            console.error('Invalid response content-type:', contentType);
-            return new Response("Invalid response format", { status: 400 });
-        }
-
-        // 解析返回的 JSON 数据
+        // 解析返回的数据
         const responseData = await res_img.json();
 
         // 如果没有 IMG 环境变量，直接返回数据
